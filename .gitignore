@@ -1,1 +1,6 @@
-.trae/rules/git-commit-message.md
+.trae
+.agents
+docs
+CLAUDE.md
+session.md
+

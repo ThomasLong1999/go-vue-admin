@@ -44,8 +44,8 @@ func Load(configPath string) (*Config, error) {
 	// filepath 会自动处理这个差异
 
 	v.SetConfigName(filename[:len(filename)-len(ext)]) // 去掉扩展名: "config"
-	v.SetConfigType(ext[1:])                            // 设置格式: "yaml"
-	v.AddConfigPath(dir)                                 // 搜索目录: "config"
+	v.SetConfigType(ext[1:])                           // 设置格式: "yaml"
+	v.AddConfigPath(dir)                               // 搜索目录: "config"
 
 	// 读取配置文件
 	if err := v.ReadInConfig(); err != nil {

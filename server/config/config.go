@@ -59,7 +59,7 @@ type JWTConfig struct {
 // 【知识点】Go 的方法定义在 struct 外部，通过 (c *DatabaseConfig) 绑定
 // 这种写法叫"方法接收者"，*表示指针接收者，可以修改原对象
 func (c *DatabaseConfig) DSN() string {
-	// 拼接出 MySQL 连接字符串:
+	// 拼接   出 MySQL 连接字符串:
 	// root:123456@tcp(127.0.0.1:3306)/go_vue_admin?charset=utf8mb4&parseTime=True&loc=Local
 	//
 	// 【知识点】各个参数含义:
