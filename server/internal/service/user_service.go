@@ -31,6 +31,11 @@ type UserService struct {
 	jwtMgr   *pkg.JWTManager
 }
 
+var (
+	ErrUsernameTaken  = errors.New("用户名已存在")
+	ErrNoUpdateFields = errors.New("没有可更新的字段")
+)
+
 // NewUserService 创建用户服务实例
 // 【知识点】多个依赖注入: 需要用户仓库 + 角色仓库 + JWT管理器
 func NewUserService(
@@ -58,6 +63,14 @@ type RegisterInput struct {
 	// email: 必须是合法邮箱格式
 }
 
+// UpdateUserInput 只声明用户管理页允许修改的字段。
+// 指针能区分“前端没有传该字段”和“前端传了空字符串”。
+type UpdateUserInput struct {
+	Nickname *string `json:"nickname" binding:"omitempty,max=64"`
+	Email    *string `json:"email" binding:"omitempty,email,max=128"`
+	Status   *int8   `json:"status" binding:"omitempty,oneof=0 1"`
+}
+
 // LoginInput 登录请求参数
 type LoginInput struct {
 	Username string `json:"username" binding:"required"`
@@ -70,7 +83,7 @@ func (s *UserService) Register(input RegisterInput) (*model.User, error) {
 	_, err := s.userRepo.GetByUsername(input.Username)
 	if err == nil {
 		// 没有错误说明用户已存在
-		return nil, errors.New("用户名已存在")
+		return nil, ErrUsernameTaken
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		// 不是"记录不存在"的错误，说明数据库出问题了
@@ -100,9 +113,10 @@ func (s *UserService) Register(input RegisterInput) (*model.User, error) {
 	// 【知识点】新注册用户默认给"普通用户"角色
 	// admin 角色应该由管理员手动分配，不能自注册
 	role, err := s.roleRepo.GetByCode("user")
-	if err == nil {
-		user.Roles = []model.Role{*role}
+	if err != nil {
+		return nil, fmt.Errorf("查询默认角色失败: %w", err)
 	}
+	user.Roles = []model.Role{*role}
 
 	// 5. 保存到数据库
 	if err := s.userRepo.Create(user); err != nil {
@@ -136,8 +150,16 @@ func (s *UserService) Login(input LoginInput) (*model.User, string, error) {
 		return nil, "", errors.New("用户已被禁用")
 	}
 
-	// 4. 生成 JWT Token
-	token, err := s.jwtMgr.GenerateToken(user.ID, user.Username)
+	// 4. 生成 JWT Token。这里刻意只放一个 is_admin 标记，
+	// 方便先理解授权流程，完整 RBAC 留作后续练习。
+	isAdmin := false
+	for _, role := range user.Roles {
+		if role.Code == "admin" {
+			isAdmin = true
+			break
+		}
+	}
+	token, err := s.jwtMgr.GenerateToken(user.ID, user.Username, isAdmin)
 	if err != nil {
 		return nil, "", fmt.Errorf("生成 Token 失败: %w", err)
 	}
@@ -156,22 +178,25 @@ func (s *UserService) ListUsers(query model.PageQuery) ([]model.User, int64, err
 }
 
 // UpdateUser 更新用户信息
-// 【知识点】指针 vs 值: 传入 map[string]interface{} 可以只更新指定字段
-func (s *UserService) UpdateUser(id uint, updates map[string]interface{}) (*model.User, error) {
+// 【知识点】先把输入转换成受控 map，再交给 Repository 更新。
+func (s *UserService) UpdateUser(id uint, input UpdateUserInput) (*model.User, error) {
 	user, err := s.userRepo.GetByID(id)
 	if err != nil {
 		return nil, err
 	}
 
-	// 如果更新了密码，需要重新加密
-	if pwd, ok := updates["password"].(string); ok && pwd != "" {
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(pwd), bcrypt.DefaultCost)
-		if err != nil {
-			return nil, fmt.Errorf("密码加密失败: %w", err)
-		}
-		updates["password"] = string(hashedPassword)
-	} else {
-		delete(updates, "password") // 不允许通过 map 清空密码
+	updates := map[string]interface{}{}
+	if input.Nickname != nil {
+		updates["nickname"] = *input.Nickname
+	}
+	if input.Email != nil {
+		updates["email"] = *input.Email
+	}
+	if input.Status != nil {
+		updates["status"] = *input.Status
+	}
+	if len(updates) == 0 {
+		return nil, ErrNoUpdateFields
 	}
 
 	// 【知识点】Gorm 的 Model().Updates() 只更新指定字段

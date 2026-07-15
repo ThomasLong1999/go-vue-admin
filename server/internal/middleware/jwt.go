@@ -55,7 +55,21 @@ func JWTAuth(jwtMgr *pkg.JWTManager) gin.HandlerFunc {
 		// 4. 将用户信息存入 Context，后续 Handler 可通过 c.Get("user_id") 取出
 		c.Set("user_id", claims.UserID)
 		c.Set("username", claims.Username)
+		c.Set("is_admin", claims.IsAdmin)
 
+		c.Next()
+	}
+}
+
+// RequireAdmin 演示“已登录”和“有权限”是两个不同的概念。
+// JWTAuth 负责确认身份；本中间件只允许管理员继续访问。
+func RequireAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !c.GetBool("is_admin") {
+			pkg.FailWithHTTPCode(c, 403, 403, "需要管理员权限")
+			c.Abort()
+			return
+		}
 		c.Next()
 	}
 }

@@ -99,7 +99,7 @@
     >
       <el-form :model="formData" label-width="80px">
         <el-form-item label="用户名">
-          <el-input v-model="formData.username" />
+          <el-input v-model="formData.username" :disabled="dialogType === 'edit'" />
         </el-form-item>
         <el-form-item label="密码" v-if="dialogType === 'add'">
           <el-input v-model="formData.password" type="password" show-password />
@@ -177,8 +177,13 @@ async function loadUsers() {
 function openDialog(type, row) {
   dialogType.value = type
   if (type === 'edit' && row) {
-    // 编辑: 填充已有数据
-    Object.assign(formData, row)
+    // 编辑: 只填充页面真正需要的字段
+    formData.id = row.id
+    formData.username = row.username
+    formData.password = ''
+    formData.nickname = row.nickname || ''
+    formData.email = row.email || ''
+    formData.status = row.status
   } else {
     // 新增: 清空表单
     formData.id = null
@@ -196,14 +201,23 @@ async function handleSubmit() {
   submitLoading.value = true
   try {
     if (dialogType.value === 'add') {
-      await createUser(formData)
+      await createUser({
+        username: formData.username,
+        password: formData.password,
+        nickname: formData.nickname,
+        email: formData.email,
+      })
       ElMessage.success('创建成功')
     } else {
-      await updateUser(formData.id, formData)
+      await updateUser(formData.id, {
+        nickname: formData.nickname,
+        email: formData.email,
+        status: formData.status,
+      })
       ElMessage.success('更新成功')
     }
     dialogVisible.value = false
-    loadUsers() // 重新加载列表
+    await loadUsers() // 重新加载列表
   } catch (err) {
     // 错误由拦截器处理
   } finally {

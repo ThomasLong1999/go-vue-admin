@@ -59,6 +59,9 @@
           </el-button>
         </el-form-item>
       </el-form>
+      <el-button text style="width: 100%" @click="router.push('/register')">
+        没有账号？创建学习账号
+      </el-button>
     </div>
   </div>
 </template>

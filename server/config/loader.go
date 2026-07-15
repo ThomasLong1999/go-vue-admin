@@ -10,7 +10,7 @@ package config
 import (
 	"fmt"
 	"log"
-	"path/filepath"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -34,18 +34,26 @@ func Load(configPath string) (*Config, error) {
 
 	v := viper.New()
 
-	// 设置配置文件名和路径
-	filename := filepath.Base(configPath) // 提取文件名: "config.yaml"
-	ext := filepath.Ext(filename)         // 提取扩展名: ".yaml"
-	dir := filepath.Dir(configPath)       // 提取目录: "config"
+	// SetConfigFile 直接指定文件路径，比手动拆分文件名和目录更直观。
+	v.SetConfigFile(configPath)
+	v.SetConfigType("yaml")
 
-	// 【知识点】filepath 包处理跨平台的路径问题
-	// Windows 用 \ 分隔路径，Linux/Mac 用 / 分隔
-	// filepath 会自动处理这个差异
-
-	v.SetConfigName(filename[:len(filename)-len(ext)]) // 去掉扩展名: "config"
-	v.SetConfigType(ext[1:])                           // 设置格式: "yaml"
-	v.AddConfigPath(dir)                               // 搜索目录: "config"
+	// 环境变量使用大写下划线形式：jwt.secret → JWT_SECRET。
+	// BindEnv 能让环境变量也参与 Unmarshal，而不仅是 v.Get()。
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+	for _, key := range []string{
+		"server.port", "server.mode",
+		"database.host", "database.port", "database.user", "database.password", "database.dbname",
+		"database.max_idle_conns", "database.max_open_conns", "database.conn_max_lifetime",
+		"redis.host", "redis.port", "redis.password", "redis.db",
+		"jwt.secret", "jwt.expire_hours",
+		"bootstrap.admin_username", "bootstrap.admin_password",
+	} {
+		if err := v.BindEnv(key); err != nil {
+			return nil, fmt.Errorf("绑定环境变量 %s 失败: %w", key, err)
+		}
+	}
 
 	// 读取配置文件
 	if err := v.ReadInConfig(); err != nil {
@@ -59,6 +67,9 @@ func Load(configPath string) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("解析配置失败: %w", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("配置校验失败: %w", err)
 	}
 
 	// 【知识点】log.Printf 是标准库的日志函数

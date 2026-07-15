@@ -10,15 +10,19 @@ package config
 
 // 【知识点】import 导入外部包，用 "包路径" 引入，代码中用最后一段名称调用
 // 例如 fmt.Sprintf 调用 fmt 包的 Sprintf 函数
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Config 是整个应用的配置根结构体
 // 它把所有子配置组织在一起，方便统一管理
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	JWT      JWTConfig      `mapstructure:"jwt"`
+	Server    ServerConfig    `mapstructure:"server"`
+	Database  DatabaseConfig  `mapstructure:"database"`
+	Redis     RedisConfig     `mapstructure:"redis"`
+	JWT       JWTConfig       `mapstructure:"jwt"`
+	Bootstrap BootstrapConfig `mapstructure:"bootstrap"`
 }
 
 // ServerConfig HTTP 服务器相关配置
@@ -53,6 +57,36 @@ type RedisConfig struct {
 type JWTConfig struct {
 	Secret      string `mapstructure:"secret"`
 	ExpireHours int    `mapstructure:"expire_hours"`
+}
+
+// BootstrapConfig 开发环境的演示数据配置
+// 只有 server.mode 为 debug 时才会使用它创建默认管理员。
+type BootstrapConfig struct {
+	AdminUsername string `mapstructure:"admin_username"`
+	AdminPassword string `mapstructure:"admin_password"`
+}
+
+// Validate 在程序连接外部服务前检查最基础的配置错误。
+// 把校验放在 Config 上，能让配置文件、环境变量和测试共用同一套规则。
+func (c Config) Validate() error {
+	if c.Server.Port < 1 || c.Server.Port > 65535 {
+		return fmt.Errorf("server.port 必须在 1 到 65535 之间")
+	}
+	if c.Server.Mode != "debug" && c.Server.Mode != "release" {
+		return fmt.Errorf("server.mode 只能是 debug 或 release")
+	}
+	if strings.TrimSpace(c.Database.Host) == "" ||
+		strings.TrimSpace(c.Database.User) == "" ||
+		strings.TrimSpace(c.Database.DBName) == "" {
+		return fmt.Errorf("database.host、database.user 和 database.dbname 不能为空")
+	}
+	if len(c.JWT.Secret) < 32 {
+		return fmt.Errorf("jwt.secret 至少需要 32 个字符")
+	}
+	if c.JWT.ExpireHours <= 0 {
+		return fmt.Errorf("jwt.expire_hours 必须大于 0")
+	}
+	return nil
 }
 
 // DSN 返回 MySQL 的连接字符串（Data Source Name）

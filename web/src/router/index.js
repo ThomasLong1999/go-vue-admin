@@ -9,6 +9,12 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
   {
+    path: '/register',
+    name: 'Register',
+    component: () => import('../views/register/RegisterView.vue'),
+    meta: { requiresAuth: false },
+  },
+  {
     path: '/login',
     name: 'Login',
     // 【知识点】懒加载: () => import() 动态导入，减少首屏体积

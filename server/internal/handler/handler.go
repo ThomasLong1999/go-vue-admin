@@ -12,6 +12,7 @@
 package handler
 
 import (
+	"errors"
 	"strconv"
 
 	"go-vue-admin/server/internal/model"
@@ -19,6 +20,7 @@ import (
 	"go-vue-admin/server/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // UserServiceHandler 用户相关 HTTP 处理函数
@@ -54,7 +56,11 @@ func (h *UserServiceHandler) Register(c *gin.Context) {
 
 	user, err := h.userSvc.Register(input)
 	if err != nil {
-		pkg.Fail(c, 500, err.Error())
+		if errors.Is(err, service.ErrUsernameTaken) {
+			pkg.FailWithHTTPCode(c, 409, 409, err.Error())
+			return
+		}
+		pkg.FailWithHTTPCode(c, 500, 500, "注册失败")
 		return
 	}
 
@@ -133,7 +139,11 @@ func (h *UserServiceHandler) CreateUser(c *gin.Context) {
 
 	user, err := h.userSvc.Register(input)
 	if err != nil {
-		pkg.Fail(c, 500, err.Error())
+		if errors.Is(err, service.ErrUsernameTaken) {
+			pkg.FailWithHTTPCode(c, 409, 409, err.Error())
+			return
+		}
+		pkg.FailWithHTTPCode(c, 500, 500, "创建用户失败")
 		return
 	}
 
@@ -148,16 +158,23 @@ func (h *UserServiceHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	var updates map[string]interface{}
-	// 【知识点】绑定到 map 可以接受任意字段，适合更新操作
-	if err := c.ShouldBindJSON(&updates); err != nil {
-		pkg.Fail(c, 400, "参数错误")
+	var input service.UpdateUserInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		pkg.FailWithHTTPCode(c, 400, 400, "参数错误: "+err.Error())
 		return
 	}
 
-	user, err := h.userSvc.UpdateUser(uint(id), updates)
+	user, err := h.userSvc.UpdateUser(uint(id), input)
 	if err != nil {
-		pkg.Fail(c, 500, "更新失败")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			pkg.FailWithHTTPCode(c, 404, 404, "用户不存在")
+			return
+		}
+		if errors.Is(err, service.ErrNoUpdateFields) {
+			pkg.FailWithHTTPCode(c, 400, 400, err.Error())
+			return
+		}
+		pkg.FailWithHTTPCode(c, 500, 500, "更新失败")
 		return
 	}
 
@@ -192,7 +209,7 @@ func NewDashboardHandler(dashboardSvc *service.DashboardService) *DashboardHandl
 }
 
 func (h *DashboardHandler) DashboardStats(c *gin.Context) {
-	stats, err := h.dashboardSvc.GetStats()
+	stats, err := h.dashboardSvc.GetStats(c.Request.Context())
 	if err != nil {
 		pkg.Fail(c, 500, "获取统计数据失败")
 		return

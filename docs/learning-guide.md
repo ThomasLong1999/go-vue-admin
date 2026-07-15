@@ -15,6 +15,7 @@
 ### 启动后端
 
 ```bash
+cp server/config/config.example.yaml server/config/config.yaml
 cd server
 go mod tidy          # 下载依赖
 go run cmd/main.go   # 启动服务，监听 8080 端口
@@ -49,10 +50,14 @@ npm run dev          # 启动开发服务器，监听 5173 端口
    - Go 的 `import` 机制
    - 多返回值和 error 处理模式
    - `fmt.Errorf` 和 `%w` 错误包装
-4. **`internal/pkg/database.go`** — MySQL 连接初始化，学习:
+   - YAML 配置与 `JWT_SECRET`、`DATABASE_PASSWORD` 等环境变量的覆盖优先级
+4. **`config/config_test.go`** — 配置测试，学习:
+   - 结构体校验如何防止程序带着错误配置启动
+   - `t.Setenv` 如何在测试中验证环境变量覆盖
+5. **`internal/pkg/database.go`** — MySQL 连接初始化，学习:
    - Gorm 的 `Open` 和连接池配置
    - `SetMaxIdleConns` / `SetMaxOpenConns` / `SetConnMaxLifetime` 的含义
-5. **`cmd/main.go`** — 程序入口，学习:
+6. **`cmd/main.go`** — 程序入口，学习:
    - Go 程序的启动顺序
    - 依赖注入的组装过程
 
@@ -75,6 +80,7 @@ npm run dev          # 启动开发服务器，监听 5173 端口
    - 闭包的概念和用法
    - `c.Abort()` 和 `c.Next()` 的区别
    - JWT Token 从 Authorization 头提取和验证
+   - 登录（Authentication）与管理员授权（Authorization）的区别
    - CORS 跨域的原理和解决
 3. **`internal/handler/handler.go`** — 请求处理层，学习:
    - `gin.Context` 的核心方法
@@ -121,12 +127,17 @@ npm run dev          # 启动开发服务器，监听 5173 端口
    - go-redis 客户端的基本配置
    - Ping 测试连接
    - `context.Background()` 的含义
-2. **`internal/pkg/jwt.go`** — JWT 工具包，学习:
+2. **`internal/service/dashboard_service.go`** — 缓存旁路（cache-aside）示例，学习:
+   - 先读取 Redis 的 `dashboard:stats`
+   - 缓存未命中或 Redis 不可用时回退到 MySQL
+   - 将查询结果缓存 30 秒
+   - 为什么缓存失败不应让仪表盘不可用
+3. **`internal/pkg/jwt.go`** — JWT 工具包，学习:
    - JWT 的三部分结构（Header / Payload / Signature）
    - Claims 自定义载荷和组合（embedding）
    - Token 生成和验证的流程
 
-**核心知识点**: Redis 基本用法、JWT 原理、context
+**核心知识点**: Redis 缓存旁路、JWT 原理、context
 
 ---
 
@@ -155,7 +166,10 @@ npm run dev          # 启动开发服务器，监听 5173 端口
    - `<script setup>` 语法糖
    - `v-model` 双向绑定
    - Element Plus 表单和校验
-6. **`web/src/views/users/UsersView.vue`** — 用户管理页面，学习:
+6. **`web/src/views/register/RegisterView.vue`** — 注册页面，学习:
+   - 复用 Pinia Store 中的注册 Action
+   - 路由跳转与表单校验
+7. **`web/src/views/users/UsersView.vue`** — 用户管理页面，学习:
    - 表格 + 分页 + 搜索
    - 对话框新增/编辑
    - 作用域插槽自定义列内容
@@ -176,7 +190,8 @@ npm run dev          # 启动开发服务器，监听 5173 端口
 3. 启动前端 `npm run dev`
 4. 打开 http://localhost:5173
 5. 尝试完整流程:
-   - 注册账号 → 登录 → 查看仪表盘 → 管理用户
+   - 注册普通账号 → 登录 → 查看仪表盘
+   - 再使用 debug 配置中的管理员账号登录 → 管理用户
 6. 打开浏览器 F12 开发者工具:
    - Network 面板: 观察每个请求的请求/响应
    - Application 面板: 查看 localStorage 中的 token
@@ -187,6 +202,8 @@ npm run dev          # 启动开发服务器，监听 5173 端口
 - 请求从浏览器发出到数据库，经过了哪些层？
 - 如果去掉 Redis，哪些功能会受影响？
 - Token 过期后，前端应该怎么处理？
+- 为什么普通用户登录成功后仍然不能访问用户管理接口？
+- 连续两次访问仪表盘时，哪一次会命中 Redis 缓存？
 
 ---
 
@@ -212,7 +229,7 @@ MySQL / Redis
 |------|------|------|
 | 入口 | `cmd/main.go` | 启动、组装依赖、启动服务 |
 | 路由 | `internal/router/` | URL → Handler 映射 |
-| 中间件 | `internal/middleware/` | JWT鉴权、CORS、限流 |
+| 中间件 | `internal/middleware/` | JWT 鉴权、管理员授权、CORS |
 | 处理器 | `internal/handler/` | HTTP 请求/响应处理 |
 | 业务 | `internal/service/` | 业务逻辑编排 |
 | 数据 | `internal/repository/` | 数据库/缓存操作 |

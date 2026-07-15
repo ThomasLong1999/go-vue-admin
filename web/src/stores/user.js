@@ -29,7 +29,7 @@ export const useUserStore = defineStore('user', () => {
   // 【知识点】ref() 创建响应式数据
   // 响应式: 数据变化时，依赖它的 UI 自动更新
   const token = ref(localStorage.getItem('token') || '')
-  const username = ref('')
+  const username = ref(localStorage.getItem('username') || '')
   const userInfo = ref(null)
 
   // ==========================================

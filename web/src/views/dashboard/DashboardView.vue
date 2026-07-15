@@ -28,7 +28,7 @@
         <el-card shadow="hover">
           <div class="stat-card">
             <div class="stat-number">{{ stats.active_users }}</div>
-            <div class="stat-label">活跃用户</div>
+            <div class="stat-label">启用用户</div>
           </div>
         </el-card>
       </el-col>

@@ -48,6 +48,8 @@ func SetupRouter(r *gin.Engine, jwtMgr *pkg.JWTManager, userHandler *handler.Use
 	{
 		// 用户管理 CRUD
 		users := protected.Group("/users")
+		// 登录只证明“你是谁”，管理员检查才决定“你能管理用户”。
+		users.Use(middleware.RequireAdmin())
 		{
 			users.GET("", userHandler.ListUsers)
 			users.POST("", userHandler.CreateUser)

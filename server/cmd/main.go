@@ -27,6 +27,7 @@ import (
 	"go-vue-admin/server/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -70,8 +71,11 @@ func main() {
 	// ==========================================
 	// 第 4 步: 初始化 Redis（可选）
 	// ==========================================
-	if _, err := pkg.InitRedis(cfg.Redis); err != nil {
+	var rdb *redis.Client
+	if client, err := pkg.InitRedis(cfg.Redis); err != nil {
 		log.Printf("⚠ Redis 连接失败（缓存功能暂不可用）: %v", err)
+	} else {
+		rdb = client
 	}
 
 	// ==========================================
@@ -93,16 +97,18 @@ func main() {
 
 	// Service 层
 	userSvc := service.NewUserService(userRepo, roleRepo, jwtMgr)
-	dashboardSvc := service.NewDashboardService(dashboardRepo)
+	dashboardSvc := service.NewDashboardService(dashboardRepo, rdb)
 
 	// Handler 层
 	userHandler := handler.NewUserHandler(userSvc)
 	dashboardHandler := handler.NewDashboardHandler(dashboardSvc)
 
 	// ==========================================
-	// 第 6 步: 初始化默认数据（角色 + 管理员账号）
+	// 第 6 步: 初始化默认数据（仅开发环境）
 	// ==========================================
-	initDefaultData(db)
+	if cfg.Server.Mode == gin.DebugMode {
+		initDefaultData(db, cfg.Bootstrap.AdminUsername, cfg.Bootstrap.AdminPassword)
+	}
 
 	// ==========================================
 	// 第 7 步: 创建 Gin 引擎 + 注册路由
@@ -134,7 +140,12 @@ func main() {
 // initDefaultData 初始化默认数据
 // 【知识点】种子数据（Seed Data）: 系统启动时自动创建的初始数据
 // 比如默认角色、管理员账号等，确保系统能正常使用
-func initDefaultData(db *gorm.DB) {
+func initDefaultData(db *gorm.DB, adminUsername, adminPassword string) {
+	if adminUsername == "" || adminPassword == "" {
+		log.Println("跳过默认管理员创建：bootstrap.admin_username 或 bootstrap.admin_password 为空")
+		return
+	}
+
 	// 1. 创建默认角色（如果不存在）
 	roles := []model.Role{
 		{Name: "管理员", Code: "admin", Description: "系统管理员，拥有所有权限"},
@@ -143,15 +154,25 @@ func initDefaultData(db *gorm.DB) {
 	for _, role := range roles {
 		// 【知识点】FirstOrCreate: 查找匹配的记录，不存在则创建
 		// 用 Code 作为唯一标识，避免重复创建
-		db.Where(model.Role{Code: role.Code}).FirstOrCreate(&role)
+		if err := db.Where(model.Role{Code: role.Code}).FirstOrCreate(&role).Error; err != nil {
+			log.Printf("创建默认角色 %s 失败: %v", role.Code, err)
+			return
+		}
 	}
 
 	// 2. 创建默认管理员账号（如果不存在）
 	var adminUser model.User
-	result := db.Where("username = ?", "admin").First(&adminUser)
-	if result.Error != nil && errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	result := db.Where("username = ?", adminUsername).First(&adminUser)
+	if result.Error == nil {
+		return
+	}
+	if !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		log.Printf("查询默认管理员失败: %v", result.Error)
+		return
+	}
+	{
 		// 管理员不存在，创建
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(adminPassword), bcrypt.DefaultCost)
 		if err != nil {
 			log.Printf("⚠ 管理员密码加密失败: %v", err)
 			return
@@ -159,10 +180,13 @@ func initDefaultData(db *gorm.DB) {
 
 		// 获取 admin 角色
 		var adminRole model.Role
-		db.Where("code = ?", "admin").First(&adminRole)
+		if err := db.Where("code = ?", "admin").First(&adminRole).Error; err != nil {
+			log.Printf("查询管理员角色失败: %v", err)
+			return
+		}
 
 		adminUser = model.User{
-			Username: "admin",
+			Username: adminUsername,
 			Password: string(hashedPassword),
 			Nickname: "超级管理员",
 			Email:    "admin@example.com",
@@ -172,7 +196,7 @@ func initDefaultData(db *gorm.DB) {
 		if err := db.Create(&adminUser).Error; err != nil {
 			log.Printf("⚠ 创建管理员账号失败: %v", err)
 		} else {
-			log.Println("✅ 默认管理员账号创建成功: admin / admin123")
+			log.Printf("✅ 默认管理员账号创建成功: %s", adminUsername)
 		}
 	}
 }

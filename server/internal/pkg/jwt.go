@@ -33,9 +33,10 @@ const (
 // jwt.RegisteredClaims 是标准库定义的通用字段
 // 把它嵌入 Claims 结构体，Claims 就自动拥有标准字段（过期时间、签发者等）
 type Claims struct {
-	UserID   uint   `json:"user_id"`   // 用户ID
-	Username string `json:"username"` // 用户名
-	jwt.RegisteredClaims              // 嵌入标准 JWT 字段
+	UserID               uint   `json:"user_id"`  // 用户ID
+	Username             string `json:"username"` // 用户名
+	IsAdmin              bool   `json:"is_admin"` // 是否拥有管理员权限
+	jwt.RegisteredClaims        // 嵌入标准 JWT 字段
 }
 
 // JWTManager JWT 管理器，封装生成和解析逻辑
@@ -54,13 +55,13 @@ func NewJWTManager(secret string, expireHours int) *JWTManager {
 }
 
 // GenerateToken 生成 JWT Token
-// 参数: userID(用户ID), username(用户名)
+// 参数: userID(用户ID), username(用户名), isAdmin(是否管理员)
 // 返回: token 字符串, 错误信息
 //
 // 【知识点】jwt.NewWithClaims 创建一个新的 Token 对象
 // jwt.NewWithClaims(签名算法, 载荷)
 // HMAC-SHA256 是最常用的对称加密算法，安全性足够且性能好
-func (m *JWTManager) GenerateToken(userID uint, username string) (string, error) {
+func (m *JWTManager) GenerateToken(userID uint, username string, isAdmin bool) (string, error) {
 	// 【知识点】time.Now() 获取当前时间
 	// .Add() 方法加上过期时长，得到过期时间
 	now := time.Now()
@@ -68,6 +69,7 @@ func (m *JWTManager) GenerateToken(userID uint, username string) (string, error)
 	claims := Claims{
 		UserID:   userID,
 		Username: username,
+		IsAdmin:  isAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(m.expireHour)),
 			// 【知识点】jwt.NewNumericDate 把 time.Time 转成 JWT 需要的格式
